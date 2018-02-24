@@ -31,3 +31,10 @@ Until a release is made, the progress on each commit will be detailed here
  - Added refresh feature to get latest version from database
  - After refresh, fields are not validated to avoid changing the status
    message to "Pending changes" when object has just been refreshed.
+
+**[06](../../commit/master): Created PQSFieldBinder**
+ - Renamed `QtDataMapper` to `PQSFieldBinder`
+ - Cleaned its code, added comments
+ - Abstracted functionality
+ - Added autoupdate `autoconnect` feature to connect signal and slot
+   automatically
