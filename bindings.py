@@ -23,6 +23,8 @@ from sqlalchemy.orm import validates, sessionmaker
 
 # globals
 SESSION = None
+MODES = ["add", "edit-transient", "edit-pending", "edit-persistent",
+         "edit-persistent-wrong"]
 STATES_COLORS = ["#f6989d", "#fff79a", "#c4df9b"]
 
 # SQLAlchemy model
@@ -42,7 +44,7 @@ class User(Base):
     @validates('email')
     def validate_email(self, key, address):
         if address is None:
-            return None
+            raise ValueError("email is mandatory")
         assert '@' in address
         return address
 
@@ -58,11 +60,11 @@ class User(Base):
 class QtDataMapper(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, field, ui):
+    def __init__(self, field, ui, autoupdate=True):
         self._field = field
         self._ui = ui
         self._name = self.__class__.__name__.lower().replace("mapper", "")
-        self._autoupdate = True
+        self._autoupdate = autoupdate
 
     @property
     def autoupdate(self):
@@ -80,12 +82,12 @@ class QtDataMapper(object):
 
     @property
     @abstractmethod
-    def value(self):
+    def qt_value(self):
         pass
 
-    @value.setter
+    @qt_value.setter
     @abstractmethod
-    def value(self, new_value):
+    def qt_value(self, new_value):
         pass
 
     @property
@@ -105,20 +107,41 @@ class QtDataMapper(object):
     def reset(self):
         return None
 
+    @property
+    def model(self):
+        return self._ui.model
+
+    @property
+    def model_value(self):
+        return getattr(self.model, self.name)
+
+    @model_value.setter
+    def model_value(self, value):
+        raised_exception = None
+        try:
+            setattr(self.model, self.name, value)
+        except Exception as e:
+            raised_exception = e
+        self._ui.update_status()
+        if raised_exception is not None:
+            raise raised_exception
+
     def isValid(self):
         try:
             # we must check what we see in order to prevent
             # can't reset issues
             # (we write 1, delete it, fails but 1 still there)
-            setattr(self._ui.model, self.name, self.value)
+            self.model_value = self.qt_value
         except Exception as e:
             print(" attribute %s value \"%s\" is invalid" % (
-                self.name, self.value))
+                self.name, self.qt_value))
             import traceback
             traceback.print_exc()
+            self._on_invalid()
             return False
         else:
             print(" attribute %s is valid" % self.name)
+            self._on_valid()
             return True
 
     def valid(self):
@@ -133,24 +156,29 @@ class QtDataMapper(object):
         self._field.setStyleSheet('QLineEdit { background-color: %s }' %
                                   STATES_COLORS[0])
 
-    def _on_update_fail(self, exc, value):
+    def _on_valid(self):
+        self.valid()
+
+    def _on_invalid(self):
         self.invalid()
+
+    def _on_update_fail(self, exc, value):
+        self._on_invalid()
         print(" not valid: %s" % str(exc))
 
     def _on_update_success(self, value):
-        self.valid()
+        self._on_valid()
         print(" valid")
 
     def _on_update(self, value):
         print(" completed edit: model.%s = %s" % (self.name,
               getattr(self._ui.model, self.name)))
-        self._ui.update_status()
 
     def _on_update_reset_fail(self, exc, value):
         print(" can't reset attribute: %s" % str(exc))
 
     def _on_update_reset_success(self, value):
-        print(" reset attribute to %s", self.reset)
+        print(" reset attribute to %s" % self.reset)
 
     def _on_update_reset(self, value):
         print(" completed reset")
@@ -160,11 +188,11 @@ class QtDataMapper(object):
             print("Autoupdate disabled")
             return
         print("Updating field \"%s\"" % self.name)
-        model, name, value = self._ui.model, self.name, self.value
+        value = self.qt_value
         failed = False
         # try to set value
         try:
-            setattr(model, name, value)
+            self.model_value = value
         except Exception as exc:
             self._on_update_fail(exc, value)
             failed = True
@@ -173,7 +201,7 @@ class QtDataMapper(object):
         # try to reset if failed
         if failed:
             try:
-                setattr(model, name, self.reset)
+                self.model_value = self.reset
             except Exception as exc:
                 self._on_update_reset_fail(exc, value)
             else:
@@ -186,12 +214,18 @@ class QtDataMapper(object):
 
 class EmailMapper(QtDataMapper):
     @property
-    def value(self):
-        return self._field.text()
+    def qt_value(self):
+        get_value = self._field.text()
+        return get_value if len(get_value) else None
 
-    @value.setter
-    def value(self, new_value):
-        self._field.setText(str(new_value))
+    @qt_value.setter
+    def qt_value(self, new_value):
+        set_value = new_value
+        if new_value is None:
+            set_value = ""
+        elif not isinstance(new_value, str):
+            set_value = str(set_value)
+        self._field.setText(set_value)
 
     @property
     def signal(self):
@@ -206,12 +240,18 @@ class EmailMapper(QtDataMapper):
 
 class NumberMapper(QtDataMapper):
     @property
-    def value(self):
-        return self._field.text()
+    def qt_value(self):
+        get_value = self._field.text()
+        return get_value if len(get_value) else None
 
-    @value.setter
-    def value(self, new_value):
-        self._field.setText(str(new_value))
+    @qt_value.setter
+    def qt_value(self, new_value):
+        set_value = new_value
+        if new_value is None:
+            set_value = ""
+        elif not isinstance(new_value, str):
+            set_value = str(set_value)
+        self._field.setText(set_value)
 
     @property
     def signal(self):
@@ -226,18 +266,22 @@ class NumberMapper(QtDataMapper):
 
 # # Create widget
 class ExampleDataUI():
-    def setupUi(self, parent, cls_obj):
+    def __init__(self, cls_obj):
         # Create model
         if inspect.isclass(cls_obj):
+            print("ui started with class %s" % cls_obj.__name__)
             self.model = cls_obj()
         elif isinstance(cls_obj, Base):
+            print("ui started with object %s" % cls_obj)
             self.model = cls_obj
+
+    def setupUi(self, parent):
         # Window title
         self.parent = parent
         parent.setWindowTitle("SQLAlchemy + Qt test")
         # Window elements
         self.verticalLayout = QVBoxLayout(parent)
-        self.titleLabel = QLabel(cls_obj.__name__, parent)
+        self.titleLabel = QLabel(self.model.__class__.__name__, parent)
         self.emailLineEdit = QLineEdit(parent)
         self.numberLineEdit = QLineEdit(parent)
         self.statusLabel = QLabel(parent)
@@ -257,35 +301,37 @@ class ExampleDataUI():
                         NumberMapper(self.numberLineEdit, self)]
         # Create updaters and events
         for mapper in self.mappers:
+            mapper.qt_value = mapper.model_value
             mapper.signal.connect(functools.partial(mapper.updater))
-            mapper.updater()
+            mapper.schrodinger()
+            status = sqla_inspect(self.model)
+            if status.persistent and not status.modified:
+                self.update_status()
+            else:
+                mapper.isValid()
         # Save
         self.saveButton.clicked.connect(self.save)
         self.refreshButton.clicked.connect(self.refresh)
         self.validateButton.clicked.connect(self.validate)
         self.emailLineEdit.returnPressed.connect(self.save)
         self.numberLineEdit.returnPressed.connect(self.save)
-        # Set status
-        self.update_status()
 
     def validate(self):
         for mapper in self.mappers:
             mapper.disable()
-            mapper.valid()
-            mapper.value = mapper.value
+            mapper.isValid()
             mapper.enable()
 
     def refresh(self):
         SESSION.refresh(self.model)
         self.update_from_model()
-        self.validate()
         self.update_status()
 
     def update_from_model(self):
         for mapper in self.mappers:
             mapper.disable()
             mapper.disable_autoupdate()
-            mapper.value = getattr(self.model, mapper.name)
+            mapper.qt_value = mapper.model_value
             mapper.schrodinger()
             mapper.enable_autoupdate()
             mapper.enable()
@@ -353,6 +399,15 @@ class ExampleDataUI():
 # run
 if __name__ == "__main__":
     # prepare scenario
+    mode = MODES[0]
+    # # args
+    if len(sys.argv) > 1:
+        if sys.argv[1] in MODES:
+            mode = sys.argv[1]
+        else:
+            print("unknown mode")
+            print("choose from %s" % str(MODES))
+            sys.exit(1)
     # # SQLAlchemy
     engine = create_engine("sqlite:///:memory:", echo=True)
     Base.metadata.create_all(engine)
@@ -361,8 +416,27 @@ if __name__ == "__main__":
     # # Qt
     app = QApplication(sys.argv)
     widget = QWidget()
-    ui = ExampleDataUI()
-    ui.setupUi(widget, User)
+    print("ui mode: %s" % mode)
+    if mode == "add":
+        ui = ExampleDataUI(User)
+    elif mode == "edit-transient":
+        ui = ExampleDataUI(User(email="transient@users.org", number=1))
+    elif mode == "edit-pending":
+        u = User(email="pending@users.org", number=2)
+        SESSION.add(u)
+        ui = ExampleDataUI(u)
+    elif mode == "edit-persistent":
+        u = User(email="persistent@users.org", number=3)
+        SESSION.add(u)
+        SESSION.commit()
+        ui = ExampleDataUI(u)
+    elif mode == "edit-persistent-wrong":
+        SESSION.execute("INSERT INTO users (email, number) VALUES (" +
+                        "\"persistent-wrongusers.org\", 4)")
+        SESSION.commit()
+        u = SESSION.query(User).first()
+        ui = ExampleDataUI(u)
+    ui.setupUi(widget)
     widget.show()
     # run and show
     sys.exit(app.exec_())
