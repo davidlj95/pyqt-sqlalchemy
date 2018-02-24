@@ -11,12 +11,14 @@
 from abc import ABCMeta, abstractmethod
 import sys
 import functools
+import inspect
 # Qt imports
 from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QVBoxLayout, \
                             QPushButton, QLabel, QMessageBox
 # SQLAlchemy imports
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, Integer, create_engine
+from sqlalchemy import Column, String, Integer, create_engine, \
+                       inspect as sqla_inspect
 from sqlalchemy.orm import validates, sessionmaker
 
 # globals
@@ -41,8 +43,6 @@ class User(Base):
     def validate_email(self, key, address):
         if address is None:
             return None
-        if address == "":
-            return None
         assert '@' in address
         return address
 
@@ -58,10 +58,21 @@ class User(Base):
 class QtDataMapper(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, field, model):
+    def __init__(self, field, ui):
         self._field = field
-        self._model = model
+        self._ui = ui
         self._name = self.__class__.__name__.lower().replace("mapper", "")
+        self._autoupdate = True
+
+    @property
+    def autoupdate(self):
+        return self._autoupdate
+
+    def enable_autoupdate(self):
+        self._autoupdate = True
+
+    def disable_autoupdate(self):
+        self._autoupdate = False
 
     @property
     def name(self):
@@ -72,9 +83,22 @@ class QtDataMapper(object):
     def value(self):
         pass
 
+    @value.setter
+    @abstractmethod
+    def value(self, new_value):
+        pass
+
     @property
     @abstractmethod
     def signal(self):
+        pass
+
+    @abstractmethod
+    def disable(self):
+        pass
+
+    @abstractmethod
+    def enable(self):
         pass
 
     @property
@@ -84,10 +108,12 @@ class QtDataMapper(object):
     def isValid(self):
         try:
             # we must check what we see in order to prevent
-            # unresettable issues (we write 1, delete it, fails but 1 still there)
-            setattr(self._model, self.name, self.value)
+            # can't reset issues
+            # (we write 1, delete it, fails but 1 still there)
+            setattr(self._ui.model, self.name, self.value)
         except Exception as e:
-            print(" attribute %s value \"%s\" is invalid" % (self.name, self.value))
+            print(" attribute %s value \"%s\" is invalid" % (
+                self.name, self.value))
             import traceback
             traceback.print_exc()
             return False
@@ -95,19 +121,30 @@ class QtDataMapper(object):
             print(" attribute %s is valid" % self.name)
             return True
 
-    def _on_update_fail(self, exc, value):
+    def valid(self):
+        self._field.setStyleSheet('QLineEdit { background-color: %s }' %
+                                  STATES_COLORS[2])
+
+    def schrodinger(self):
+        self._field.setStyleSheet('QLineEdit { background-color: %s }' %
+                                  STATES_COLORS[1])
+
+    def invalid(self):
         self._field.setStyleSheet('QLineEdit { background-color: %s }' %
                                   STATES_COLORS[0])
+
+    def _on_update_fail(self, exc, value):
+        self.invalid()
         print(" not valid: %s" % str(exc))
 
     def _on_update_success(self, value):
-        self._field.setStyleSheet('QLineEdit { background-color: %s }' %
-                                  STATES_COLORS[2])
+        self.valid()
         print(" valid")
 
     def _on_update(self, value):
         print(" completed edit: model.%s = %s" % (self.name,
-              getattr(self._model, self.name)))
+              getattr(self._ui.model, self.name)))
+        self._ui.update_status()
 
     def _on_update_reset_fail(self, exc, value):
         print(" can't reset attribute: %s" % str(exc))
@@ -119,8 +156,11 @@ class QtDataMapper(object):
         print(" completed reset")
 
     def updater(self):
+        if not self._autoupdate:
+            print("Autoupdate disabled")
+            return
         print("Updating field \"%s\"" % self.name)
-        model, name, value = self._model, self.name, self.value
+        model, name, value = self._ui.model, self.name, self.value
         failed = False
         # try to set value
         try:
@@ -149,9 +189,19 @@ class EmailMapper(QtDataMapper):
     def value(self):
         return self._field.text()
 
+    @value.setter
+    def value(self, new_value):
+        self._field.setText(str(new_value))
+
     @property
     def signal(self):
         return self._field.textChanged
+
+    def disable(self):
+        self._field.setReadOnly(True)
+
+    def enable(self):
+        self._field.setReadOnly(False)
 
 
 class NumberMapper(QtDataMapper):
@@ -159,40 +209,86 @@ class NumberMapper(QtDataMapper):
     def value(self):
         return self._field.text()
 
+    @value.setter
+    def value(self, new_value):
+        self._field.setText(str(new_value))
+
     @property
     def signal(self):
         return self._field.textChanged
 
+    def disable(self):
+        self._field.setReadOnly(True)
+
+    def enable(self):
+        self._field.setReadOnly(False)
+
 
 # # Create widget
 class ExampleDataUI():
-    def setupUi(self, parent, cls):
+    def setupUi(self, parent, cls_obj):
+        # Create model
+        if inspect.isclass(cls_obj):
+            self.model = cls_obj()
+        elif isinstance(cls_obj, Base):
+            self.model = cls_obj
         # Window title
         self.parent = parent
         parent.setWindowTitle("SQLAlchemy + Qt test")
         # Window elements
         self.verticalLayout = QVBoxLayout(parent)
-        self.titleLabel = QLabel(cls.__name__, parent)
+        self.titleLabel = QLabel(cls_obj.__name__, parent)
         self.emailLineEdit = QLineEdit(parent)
         self.numberLineEdit = QLineEdit(parent)
+        self.statusLabel = QLabel(parent)
         self.saveButton = QPushButton("Save", parent)
+        self.validateButton = QPushButton("Validate", parent)
+        self.refreshButton = QPushButton("Refresh", parent)
         # Add elements to layout
         self.verticalLayout.addWidget(self.titleLabel)
         self.verticalLayout.addWidget(self.emailLineEdit)
         self.verticalLayout.addWidget(self.numberLineEdit)
         self.verticalLayout.addWidget(self.saveButton)
+        self.verticalLayout.addWidget(self.refreshButton)
+        self.verticalLayout.addWidget(self.validateButton)
+        self.verticalLayout.addWidget(self.statusLabel)
         # Define mappings
-        self.model = User()
-        self.mappers = [EmailMapper(self.emailLineEdit, self.model),
-                        NumberMapper(self.numberLineEdit, self.model)]
+        self.mappers = [EmailMapper(self.emailLineEdit, self),
+                        NumberMapper(self.numberLineEdit, self)]
         # Create updaters and events
         for mapper in self.mappers:
             mapper.signal.connect(functools.partial(mapper.updater))
             mapper.updater()
         # Save
         self.saveButton.clicked.connect(self.save)
+        self.refreshButton.clicked.connect(self.refresh)
+        self.validateButton.clicked.connect(self.validate)
         self.emailLineEdit.returnPressed.connect(self.save)
         self.numberLineEdit.returnPressed.connect(self.save)
+        # Set status
+        self.update_status()
+
+    def validate(self):
+        for mapper in self.mappers:
+            mapper.disable()
+            mapper.valid()
+            mapper.value = mapper.value
+            mapper.enable()
+
+    def refresh(self):
+        SESSION.refresh(self.model)
+        self.update_from_model()
+        self.validate()
+        self.update_status()
+
+    def update_from_model(self):
+        for mapper in self.mappers:
+            mapper.disable()
+            mapper.disable_autoupdate()
+            mapper.value = getattr(self.model, mapper.name)
+            mapper.schrodinger()
+            mapper.enable_autoupdate()
+            mapper.enable()
 
     def save(self):
         print("Try to save")
@@ -205,6 +301,7 @@ class ExampleDataUI():
 
     def save_to_db(self):
         print("Saving to db")
+        # not necessary to check not already in session, idempotent
         SESSION.add(self.model)
         rollback = False
         try:
@@ -216,9 +313,42 @@ class ExampleDataUI():
             try:
                 SESSION.rollback()
             except Exception as e:
-                QMessageBox.critical(self.parent, "Couldn't rollback either", str(e))
+                QMessageBox.critical(self.parent,
+                                     "Couldn't rollback either", str(e))
         else:
-            QMessageBox.information(self.parent, "Update performed", "Congrats")
+            QMessageBox.information(self.parent,
+                                    "Update performed", "Congrats")
+        self.update_status()
+
+    def update_status(self):
+        stat = sqla_inspect(self.model)
+        stat_msg = "<b>ERROR</b>"
+        if stat.transient:
+            stat_msg = "Transient (not tracked)"
+            self.refreshButton.hide()
+            self.validateButton.show()
+        elif stat.pending:
+            stat_msg = "Pending (tracked but pending to add to database)"
+            self.refreshButton.hide()
+            self.validateButton.show()
+        elif stat.persistent:
+            stat_msg = "Persistent (tracked and present in database)\n"
+            self.refreshButton.show()
+            self.validateButton.show()
+            if stat.modified:
+                stat_msg += "Pending to apply changes"
+            else:
+                stat_msg += "No changes pending"
+        elif stat.deleted:
+            stat_msg = "Deleted (tracked and will be deleted)"
+            self.refreshButton.show()
+            self.validateButton.show()
+        elif stat.detached:
+            stat_msg = "Detached (untracked because deletion)"
+            self.refreshButton.hide()
+            self.validateButton.hide()
+        self.statusLabel.setText(stat_msg)
+
 
 # run
 if __name__ == "__main__":
