@@ -1,0 +1,12 @@
+cmd: "python"
+name: "PyQt - SQLAlchemy bindings: test"
+args:
+  - "bindings.py"
+sh: true,
+targets:
+  check_env:
+      name: "Conda: check environment"
+      cmd: "conda"
+      args:
+        - "info"
+        - "--envs"
