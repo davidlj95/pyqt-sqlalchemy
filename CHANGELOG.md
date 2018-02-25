@@ -39,7 +39,7 @@ Until a release is made, the progress on each commit will be detailed here
  - Added autoupdate `autoconnect` feature to connect signal and slot
    automatically
 
-**[07](../../commit/master): Created `PQSEditUI`**
+**[07](../../commit/f65bde050f032d68092da4b3b4f4c179e859f110): Created `PQSEditUI`**
  - Allows to design a UI in QtDesigner to set as edit UI
  - Allows to design a separate UI in QtDesigner for the model fields:
     - Implements pre-defined `PQSFieldBinder` for following QWidgets:
@@ -61,3 +61,19 @@ Until a release is made, the progress on each commit will be detailed here
    if field is already validated
  - Improved `PQSFieldBinder.bind_form` by using `PQSEditUI.update_to_gui`
  - Added disabled message if field is generated automatically
+
+**[08](../../commits/master): Abstracted `PQSEditUi`**
+ - Removed `QMessageBox`, replaced by custom exceptions
+ - Added exceptions for different kinds of possible user messages
+ - Added and tested delete feature and button
+ - Clean code and commented methods
+ - Split `update_status` to be event-driven
+ - Added events to respond for action buttons like `_on_save`
+ - Split __init__ in `_set_model` and `_set_session`
+ - Added checks before setting model and setting session
+ - Added several properties so all attributes are accesible
+ - Added properties to retrieve action buttons so they can be renamed
+ - Added `validate_binders` method to check if a list of binders is valid
+ - Split `bind_form` to create `attach_events` method
+ - Fixed `update_to_gui` failing to validate
+ - Adapted `__main__` code to suit the new style

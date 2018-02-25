@@ -47,6 +47,9 @@ class Ui_PQSEditUI(object):
         self.refreshButton = QtWidgets.QPushButton(PQSEditUI)
         self.refreshButton.setObjectName("refreshButton")
         self.horizontalLayout.addWidget(self.refreshButton)
+        self.deleteButton = QtWidgets.QPushButton(PQSEditUI)
+        self.deleteButton.setObjectName("deleteButton")
+        self.horizontalLayout.addWidget(self.deleteButton)
         self.verticalLayout.addLayout(self.horizontalLayout)
         self.statusLabel = QtWidgets.QLabel(PQSEditUI)
         font = QtGui.QFont()
@@ -67,6 +70,7 @@ class Ui_PQSEditUI(object):
         self.saveButton.setText(_translate("PQSEditUI", "Save"))
         self.validateButton.setText(_translate("PQSEditUI", "Validate"))
         self.refreshButton.setText(_translate("PQSEditUI", "Refresh"))
+        self.deleteButton.setText(_translate("PQSEditUI", "Delete"))
         self.statusLabel.setText(_translate("PQSEditUI", "Status"))
 
 
