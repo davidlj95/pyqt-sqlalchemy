@@ -10,19 +10,21 @@
 # Generic imports
 from abc import ABCMeta, abstractmethod
 import sys
-import functools
 import inspect
+import datetime
 # Qt imports
-from PyQt5.QtWidgets import QApplication, QWidget, QLineEdit, QVBoxLayout, \
-                            QPushButton, QLabel, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QMessageBox
 # SQLAlchemy imports
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String, Integer, create_engine, \
-                       inspect as sqla_inspect
-from sqlalchemy.orm import validates, sessionmaker
+                       inspect as sqla_inspect, Date
+from sqlalchemy.orm import validates, sessionmaker, Session
+# UI imports
+from edit_form import Ui_PQSEditUI
+from user_form import Ui_UserForm
 
 # globals
-SESSION = None
+SESSION_FACTORY = None
 MODES = ["add", "edit-transient", "edit-pending", "edit-persistent",
          "edit-persistent-wrong"]
 STATES_COLORS = ["#f6989d", "#fff79a", "#c4df9b"]
@@ -40,6 +42,18 @@ class User(Base):
     id = Column(Integer, primary_key=True, nullable=False)
     email = Column(String, nullable=False)
     number = Column(Integer)
+    birthdate = Column(Date)
+
+    @validates('id')
+    def validate_id(self, key, id):
+        if id is None:
+            return None
+        try:
+            id = int(id)
+        except Exception as e:
+            raise ValueError("unable to set id", str(id), " as number:",
+                             str(e))
+        return id
 
     @validates('email')
     def validate_email(self, key, address):
@@ -53,6 +67,12 @@ class User(Base):
         if num is None:
             return None
         return int(num)
+
+    @validates('birthdate')
+    def validate_birthdate(self, key, birthdate):
+        if birthdate > datetime.date.today():
+            raise ValueError("You can't be born in the future")
+        return birthdate
 
 
 # Qt interface
@@ -80,6 +100,7 @@ class PQSFieldBinder(object):
         _autoupdate (bool): Controls if the SQLAlchemy will be updated
                             automatically upon detecting a change in the PyQt
                             field
+        _disabled (bool): True so the user will never be able to write here
     """
     CLASS_SUFFIX = "Binder"
     """
@@ -91,7 +112,7 @@ class PQSFieldBinder(object):
         str: background color to set to a PyQt field's if the displayed value
              is invalid
     """
-    COLOR_NOTVALIDATED = "#fff79a"
+    COLOR_NOT_VALIDATED = "#fff79a"
     """
         str: background color to set to a PyQt field's if the displayed value
              has not been checked against validity yet
@@ -110,10 +131,11 @@ class PQSFieldBinder(object):
                     `self._gui_field.__class__.__name__`
                 2) the color the background will be set to
     """
+    __slots__ = "_gui_field", "_ui", "_name", "_autoupdate", "_disabled"
     __metaclass__ = ABCMeta
 
-    def __init__(self, gui_field, ui, name=None, autoupdate=True,
-                 connect_autoupdate=True):
+    def __init__(self, gui_field, ui, name=None, disabled=None,
+                 autoupdate=True, connect_autoupdate=True, connect_save=True):
         """Initializes a PQSFieldBinder
 
         Notes:
@@ -126,9 +148,13 @@ class PQSFieldBinder(object):
             ui (class): UI that holds the SQAlchemy model and editing features
             name (str): name of the field of the SQLAlchemy model we are
                         binding
+            disabled (bool): user can never write to this field
+                             if not specified, will be determined by GUI status
             autoupdate (bool): whether to enable autoupdate (after connecting)
             autoupdate_connect (bool): whether to connect the signal and slot
                                        to enable autoconnect
+            connect_save (bool): whether to connect the signal and slot to
+                                   save on specified signal
         """
         self._gui_field = gui_field
         self._ui = ui
@@ -137,11 +163,19 @@ class PQSFieldBinder(object):
             self.__class__.__name__.replace(self.CLASS_SUFFIX, "").lower() \
             if name is None else name
         self._autoupdate = autoupdate
+        self._disabled = disabled if isinstance(disabled, bool) else \
+            self.is_edit_disabled()
+        # Disable field
+        if self._disabled:
+            self.override_disable_edit()
         # Autoupdate connect if needed
         if connect_autoupdate:
             self.connect_autoupdate()
+        # Commit connect if needed
+        if connect_save:
+            self.connect_save()
 
-    # Control the binder features
+    # Control the binder autoupdate features
     @property
     def autoupdate(self):
         """Returns if the `autoupdate` feature is enabled"""
@@ -149,26 +183,15 @@ class PQSFieldBinder(object):
 
     def enable_autoupdate(self):
         """Enables the `autoupdate` feature"""
-        self._autoupdate = True
+        if not self._disabled:
+            self._autoupdate = True
 
     def disable_autoupdate(self):
         """Disables the `autoupdate` feature"""
-        self._autoupdate = False
+        if not self._disabled:
+            self._autoupdate = False
 
-    def connect_autoupdate(self):
-        """Connects the `gui_value_modified` signal to its trigger"""
-        self.signal_autoupdate.connect(self._on_autoupdate)
-
-    def disconnect_autoupdate(self):
-        """Disconnects the `gui_value_modified` signal from its trigger"""
-        self.signal_autoupdate.disconnect(self._on_autoupdate)
-
-    # Retrieve binder properties
-    @property
-    def name(self):
-        """Returns the name of the binded field in the SQLAlchemy model"""
-        return self._name
-
+    # Signals
     @property
     @abstractmethod
     def signal_autoupdate(self):
@@ -180,9 +203,53 @@ class PQSFieldBinder(object):
         pass
 
     @property
+    def signal_save(self):
+        """Returns the PyQt signal that tells we must save changes
+
+        Will be used to connect to save if needed.
+
+        Can return None if no signal exists
+        """
+        return None
+
+    # Auto connectors
+    def connect_autoupdate(self):
+        """Connects the `signal_autoupdate` signal to its trigger"""
+        if not self._disabled:
+            self.signal_autoupdate.connect(self._on_autoupdate)
+
+    def disconnect_autoupdate(self):
+        """Disconnects the `signal_autoupdate` signal from its trigger"""
+        if not self._disabled:
+            self.signal_autoupdate.disconnect(self._on_autoupdate)
+
+    def connect_save(self):
+        """Connects the `signal_save` signal to its slot"""
+        signal = self.signal_save
+        if signal is not None and not self._disabled:
+            signal.connect(self._ui.save)
+
+    def disconnect_save(self):
+        """Disconnects the `signal_save` signal from its slot"""
+        signal = self.signal_save
+        if signal is not None and not self._disabled:
+            signal.disconnect(self._ui.save)
+
+    # Retrieve binder properties
+    @property
+    def name(self):
+        """Returns the name of the binded field in the SQLAlchemy model"""
+        return self._name
+
+    @property
     def model(self):
         """Returns the SQLAlchemy model object"""
         return self._ui.model
+
+    @property
+    def disabled(self):
+        """Returns if the binder is disabled (user can't edit)"""
+        return self._disabled
 
     @property
     def reset_value(self):
@@ -238,18 +305,14 @@ class PQSFieldBinder(object):
         Uses `isValid` method. Tries to reset the value to the initial value
         if can't be validated to avoid saving to the database invalid values.
         """
-        value = self.gui_value
-        if not self.update(value):
-            self.reset()
+        if not self._disabled:
+            value = self.gui_value
+            if not self.update(value):
+                self.reset()
 
     def update_to_gui(self):
-        """Sets the GUI field value from the model's value
-
-        Marks also the field as not validated until the value is set
-        """
-        value = self.model_value
-        self.gui_value = value
-        self.mark_as_notvalidated(value)
+        """Sets the GUI field value from the model's value"""
+        self.gui_value = self.model_value
 
     # Model properties: set and retrieve from model
     @property
@@ -335,7 +398,29 @@ class PQSFieldBinder(object):
 
     # Control GUI: set GUI properties
     @abstractmethod
-    def disable_edit(self):
+    def is_edit_disabled(self):
+        """Returns if edit is disabled
+
+        Must be overriden
+
+        Returns:
+            bool: True if edit in GUI is disabled
+        """
+        pass
+
+    def is_edit_enabled(self):
+        """Returns if edit is enabled
+
+        Doesn't need to be overriden, returns the opposite of
+        `is_edit_disabled`
+
+        Returns:
+            bool: True if edit in GUI is enabled
+        """
+        return not self.is_edit_disabled()
+
+    @abstractmethod
+    def override_disable_edit(self):
         """Disables the PyQt field so the user can't write in it
 
         For instance, in a `QLineEdit`, the method would call
@@ -343,16 +428,25 @@ class PQSFieldBinder(object):
         """
         pass
 
+    def disable_edit(self):
+        """Disables the PyQt field so the user can't write in it
+
+        First checks if disabled
+        """
+        if not self._disabled:
+            self.override_disable_edit()
+
     def disable(self):
         """Disables the PyQt field so the user can't write in it
 
         Autoupdate will be also disabled
         """
-        self.disable_edit()
-        self.disable_autoupdate()
+        if not self._disabled:
+            self.disable_edit()
+            self.disable_autoupdate()
 
     @abstractmethod
-    def enable_edit(self):
+    def override_enable_edit(self):
         """Enables the PyQt field so the user can write in it
 
         For instance, in a `QLineEdit`, the method would call
@@ -360,13 +454,22 @@ class PQSFieldBinder(object):
         """
         pass
 
+    def enable_edit(self):
+        """Enables the PyQt field so the user can write in it
+
+        First checks if disabled
+        """
+        if not self._disabled:
+            self.override_enable_edit()
+
     def enable(self):
         """Enables the PyQt field so the user can write in it
 
         Autoupdate will be also enabled
         """
-        self.enable_edit()
-        self.enable_autoupdate()
+        if not self._disabled:
+            self.enable_edit()
+            self.enable_autoupdate()
 
     def mark_as_valid(self, value):
         """Marks the PyQt field as valid to the user, modifying it
@@ -379,7 +482,7 @@ class PQSFieldBinder(object):
             self.COLOR_VALID)
         )
 
-    def mark_as_notvalidated(self, value):
+    def mark_as_not_validated(self, value):
         """Marks the PyQt field as intermediate to the user, modifying it
 
         Intermediate status is for a field that has not been validated
@@ -389,7 +492,7 @@ class PQSFieldBinder(object):
         """
         self._gui_field.setStyleSheet(self.VALIDITY_MARK_SYTLESHEET.format(
             self._gui_field.__class__.__name__,
-            self.COLOR_NOTVALIDATED)
+            self.COLOR_NOT_VALIDATED)
         )
 
     def mark_as_invalid(self, value, exc):
@@ -399,7 +502,6 @@ class PQSFieldBinder(object):
             value (object); value checked as invalid
             exc (Exception): exception triggered so it is marked as invalid
         """
-        print("invalid")
         self._gui_field.setStyleSheet(self.VALIDITY_MARK_SYTLESHEET.format(
             self._gui_field.__class__.__name__,
             self.COLOR_INVALID)
@@ -481,8 +583,6 @@ class PQSFieldBinder(object):
             value (object); value checked as invalid
             exc (Exception): exception triggered so it is marked as invalid
         """
-        import traceback
-        traceback.print_exc()
         self.mark_as_invalid(value, exc)
         self.on_invalid(value, exc)
 
@@ -521,17 +621,28 @@ class PQSFieldBinder(object):
             self.update_from_gui()
 
 
-class EmailBinder(PQSFieldBinder):
+class QLineEditBinder(PQSFieldBinder):
+    DISABLED_MESSAGE = "<Automatically generated>"
+
     @property
     def gui_value(self):
         get_value = self._gui_field.text()
-        return get_value if len(get_value) else None
+        if len(get_value):
+            if get_value == self.DISABLED_MESSAGE:
+                return None
+            else:
+                return get_value
+        else:
+            None
 
     @gui_value.setter
     def gui_value(self, new_value):
         set_value = new_value
         if new_value is None:
-            set_value = ""
+            if self._disabled:
+                set_value = self.DISABLED_MESSAGE
+            else:
+                set_value = ""
         elif not isinstance(new_value, str):
             set_value = str(set_value)
         self._gui_field.setText(set_value)
@@ -540,138 +651,263 @@ class EmailBinder(PQSFieldBinder):
     def signal_autoupdate(self):
         return self._gui_field.textChanged
 
-    def disable_edit(self):
+    @property
+    def signal_save(self):
+        return self._gui_field.returnPressed
+
+    def is_edit_disabled(self):
+        return self._gui_field.isReadOnly()
+
+    def override_disable_edit(self):
         self._gui_field.setReadOnly(True)
 
-    def enable_edit(self):
+    def override_enable_edit(self):
         self._gui_field.setReadOnly(False)
 
 
-class NumberBinder(PQSFieldBinder):
+class QDateEditBinder(PQSFieldBinder):
     @property
     def gui_value(self):
-        get_value = self._gui_field.text()
-        return get_value if len(get_value) else None
+        return self._gui_field.date().toPyDate()
 
     @gui_value.setter
     def gui_value(self, new_value):
-        set_value = new_value
-        if new_value is None:
-            set_value = ""
-        elif not isinstance(new_value, str):
-            set_value = str(set_value)
-        self._gui_field.setText(set_value)
+        if new_value is not None:
+            self._gui_field.setDate(new_value)
 
     @property
     def signal_autoupdate(self):
-        return self._gui_field.textChanged
+        return self._gui_field.dateChanged
 
-    def disable_edit(self):
+    def is_edit_disabled(self):
+        return self._gui_field.isReadOnly()
+
+    def override_disable_edit(self):
         self._gui_field.setReadOnly(True)
 
-    def enable_edit(self):
+    def override_enable_edit(self):
         self._gui_field.setReadOnly(False)
 
 
 # # Create widget
-class ExampleDataUI():
-    def __init__(self, cls_obj):
-        # Create model
+class PQSEditUI(Ui_PQSEditUI):
+    """Creates a UI to edit a SQLAlchemy data model
+
+    Provides a title, buttons to perform actions and a status bar. The fields
+    for user input must be provided in a separate widget.
+
+    Attributes:
+        _model (Base): model this UI will help to bind
+        _parent (QWidget): widget the UI will be on
+        _form_ui (object): holds the input fields of the form
+        _binders (list): list of PQSFieldBinder objects that bind inputs to
+                         the SQLAlchemy model fields
+        _session (sqlalchemy.orm.session.Session): session to track models
+    """
+    __slots__ = "_model", "_parent", "_form_ui", "_binders", "_session"
+
+    GUI_BINDERS = {
+        "QLineEdit": QLineEditBinder,
+        "QDateEdit": QDateEditBinder
+    }
+    """
+        dict: default binders for each QtWidget input field
+    """
+
+    def __init__(self, cls_obj, session=None):
+        """Initializes the edit UI
+
+        Args:
+            cls_obj (mixed): the SQLAlchemy model to map
+                if it's an object, will map this model and display its values
+                if it's a class, will create a new empty object from it
+            session (sqlalchemy.orm.session.Session): session to track model
+                will create one if empty
+        """
+        # Create or save model
         if inspect.isclass(cls_obj):
-            print("ui started with class %s" % cls_obj.__name__)
-            self.model = cls_obj()
+            # Detect if class is correct
+            if issubclass(cls_obj, Base):
+                self._model = cls_obj()
+            else:
+                raise ValueError("cls_obj must be a class based on " +
+                                 "SQLAlchemy's base class")
         elif isinstance(cls_obj, Base):
-            print("ui started with object %s" % cls_obj)
-            self.model = cls_obj
+            # The passed value is an object
+            self._model = cls_obj
+        else:
+            # No valid model passed
+            raise ValueError("cls_obj must be a subclass of SQLAlchemy's " +
+                             "base class or an instance of one subclass")
+        # Create or save session
+        if session is None:
+            self._session = SESSION_FACTORY()
+        elif isinstance(session, Session):
+            # The passed value is an object
+            self._session = session
+        else:
+            # No valid model passed
+            raise ValueError("session must be an instance of SQLAlchemy's " +
+                             "sqlalchemy.orm.session.Session or None to " +
+                             "create one automatically")
+
+    @property
+    def model(self):
+        """Returns SQLAlchemy binded model"""
+        return self._model
+
+    @property
+    def parent(self):
+        """Returns parent QWidget"""
+        return self._parent
+
+    @property
+    def form_widget(self):
+        """Returns the widget where the field inputs must be present"""
+        return self.formWidget
+
+    @property
+    def form_ui(self):
+        """Returns the UI object that holds the form input fields"""
+        return self._form_ui
+
+    @property
+    def binders(self):
+        """Returns the binders list"""
+        return self._binders
+
+    @property
+    def session(self):
+        """Returns SQLAlchemy session"""
+        return self._session
+
+    def setup_and_bind(self, parent, form_ui):
+        """Sets up the UI and afterwards the form UI, binding to it"""
+        self.setupUi(parent)
+        self.bind_form(form_ui)
 
     def setupUi(self, parent):
         # Window title
-        self.parent = parent
-        parent.setWindowTitle("SQLAlchemy + Qt test")
+        self._parent = parent
+        self._parent.setWindowTitle("PyQt + SQLAlchemy Editor")
+        # Setup UI following design
+        super().setupUi(parent)
         # Window elements
-        self.verticalLayout = QVBoxLayout(parent)
-        self.titleLabel = QLabel(self.model.__class__.__name__, parent)
-        self.emailLineEdit = QLineEdit(parent)
-        self.numberLineEdit = QLineEdit(parent)
-        self.statusLabel = QLabel(parent)
-        self.saveButton = QPushButton("Save", parent)
-        self.validateButton = QPushButton("Validate", parent)
-        self.refreshButton = QPushButton("Refresh", parent)
-        # Add elements to layout
-        self.verticalLayout.addWidget(self.titleLabel)
-        self.verticalLayout.addWidget(self.emailLineEdit)
-        self.verticalLayout.addWidget(self.numberLineEdit)
-        self.verticalLayout.addWidget(self.saveButton)
-        self.verticalLayout.addWidget(self.refreshButton)
-        self.verticalLayout.addWidget(self.validateButton)
-        self.verticalLayout.addWidget(self.statusLabel)
-        # Define mappings
-        self.mappers = [EmailBinder(self.emailLineEdit, self),
-                        NumberBinder(self.numberLineEdit, self)]
+        self.titleLabel.setText(self.model.__class__.__name__)
+        self.saveButton.setText("Save")
+        self.validateButton.setText("Validate")
+        self.refreshButton.setText("Refresh")
+
+    def lookup_binders(self):
+        """Tries to get the binders or guess them from form_ui"""
+        # 1. Get binders directly
+        binders = getattr(self._form_ui, "binders", None)
+        if binders is not None:
+            self._binders = binders
+            return
+        # 2. Guess them
+        self._binders = []
+        for attr_name in dir(self._form_ui):
+            # Get attribute and its class
+            attr = getattr(self._form_ui, attr_name)
+            attr_class_name = attr.__class__.__name__
+            # Check if class has default binder
+            if attr_class_name in self.GUI_BINDERS:
+                # Try to guess name
+                field_suffix = attr_class_name[1:]
+                name = attr_name.replace(field_suffix, "")
+                # Check if name exists
+                name_exists = True
+                try:
+                    getattr(self._model, name)
+                except Exception as e:
+                    name_exists = False
+                # Add to binders if exists
+                if name_exists:
+                        self._binders.append(self.GUI_BINDERS[attr_class_name](
+                        attr, self, name))
+        # n. Can't find them
+        if not len(self._binders):
+            QMessageBox.warning(self._parent, "Binder lookup",
+                                "No binders found")
+
+    def bind_form(self, form_ui):
+        """Binds the form UI into the edit UI"""
+        # Detect if valid class / object
+        if not callable(getattr(form_ui, "setupUi", None)):
+            raise ValueError("form_ui must have a setupUi method")
+        # Create object if it's a class
+        self._form_ui = form_ui() if inspect.isclass(form_ui) else form_ui
+        # Setup form UI
+        self._form_ui.setupUi(self.form_widget)
+        # Lookup binders
+        self.lookup_binders()
         # Fill GUI
-        for mapper in self.mappers:
-            mapper.disable()
-            mapper.update_to_gui()
-            mapper.enable()
+        self.update_to_gui()
+        for binder in self._binders:
+            # Validate if not persistent and clean
             status = sqla_inspect(self.model)
-            print(status.modified)
             if status.persistent and not status.modified:
-                # Do not update if persistent and clean
                 self.update_status()
             else:
-                mapper.update()
-        # Save
+                binder.update()
+        # Attach events
         self.saveButton.clicked.connect(self.save)
         self.refreshButton.clicked.connect(self.refresh)
         self.validateButton.clicked.connect(self.validate)
-        self.emailLineEdit.returnPressed.connect(self.save)
-        self.numberLineEdit.returnPressed.connect(self.save)
+        # self.emailLineEdit.returnPressed.connect(self.save)
+        # self.numberLineEdit.returnPressed.connect(self.save)
 
     def validate(self):
-        for mapper in self.mappers:
-            mapper.disable_edit()
-            mapper.update()
-            mapper.enable_edit()
+        for binder in self._binders:
+            binder.disable_edit()
+            binder.update()
+            binder.enable_edit()
 
     def refresh(self):
-        SESSION.refresh(self.model)
+        self._session.refresh(self._model)
         self.update_to_gui()
         self.update_status()
 
-    def update_to_gui(self):
-        for mapper in self.mappers:
-            mapper.disable()
-            mapper.update_to_gui()
-            mapper.enable()
+    def update_to_gui(self, validated=False):
+        for binder in self._binders:
+            binder.disable()
+            binder.update_to_gui()
+            if not validated:
+                binder.mark_as_not_validated(binder.model_value)
+            binder.enable()
 
     def save(self):
-        print("Try to save")
-        for mapper in self.mappers:
-            if not mapper.update():
-                QMessageBox.warning(self.parent, "Form invalid",
-                                    "Check and try again")
-                return
-        self.save_to_db()
+        fields_are_valid = True
+        for binder in self._binders:
+            if not binder.update():
+                fields_are_valid = False
+        if fields_are_valid:
+            self.commit()
+        else:
+            QMessageBox.warning(self._parent, "Form invalid",
+                                "Check and try again")
 
-    def save_to_db(self):
-        print("Saving to db")
+    def commit(self):
         # not necessary to check not already in session, idempotent
-        SESSION.add(self.model)
+        self._session.add(self._model)
         rollback = False
         try:
-            SESSION.commit()
+            self._session.commit()
         except Exception as e:
             rollback = True
-            QMessageBox.critical(self.parent, "Couldn't send to db", str(e))
+            QMessageBox.critical(self._parent, "Couldn't send to db", str(e))
         if rollback:
             try:
-                SESSION.rollback()
+                self._session.rollback()
             except Exception as e:
-                QMessageBox.critical(self.parent,
+                QMessageBox.critical(self._parent,
                                      "Couldn't rollback either", str(e))
         else:
-            QMessageBox.information(self.parent,
+            QMessageBox.information(self._parent,
                                     "Update performed", "Congrats")
+        # update gui from model
+        self.update_to_gui(True)
         self.update_status()
 
     def update_status(self):
@@ -719,32 +955,35 @@ if __name__ == "__main__":
     # # SQLAlchemy
     engine = create_engine("sqlite:///:memory:", echo=True)
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    SESSION = Session()
+    SESSION_FACTORY = sessionmaker(bind=engine)
     # # Qt
     app = QApplication(sys.argv)
     widget = QWidget()
     print("ui mode: %s" % mode)
     if mode == "add":
-        ui = ExampleDataUI(User)
+        ui = PQSEditUI(User)
     elif mode == "edit-transient":
-        ui = ExampleDataUI(User(email="transient@users.org", number=1))
+        ui = PQSEditUI(User(email="transient@users.org", number=1))
     elif mode == "edit-pending":
         u = User(email="pending@users.org", number=2)
-        SESSION.add(u)
-        ui = ExampleDataUI(u)
+        s = SESSION_FACTORY()
+        s.add(u)
+        ui = PQSEditUI(u, s)
     elif mode == "edit-persistent":
-        u = User(email="persistent@users.org", number=3)
-        SESSION.add(u)
-        SESSION.commit()
-        ui = ExampleDataUI(u)
+        u = User(email="persistent@users.org", number=3,
+                 birthdate=datetime.date(1995, 9, 21))
+        s = SESSION_FACTORY()
+        s.add(u)
+        s.commit()
+        ui = PQSEditUI(u, s)
     elif mode == "edit-persistent-wrong":
-        SESSION.execute("INSERT INTO users (email, number) VALUES (" +
-                        "\"persistent-wrongusers.org\", 4)")
-        SESSION.commit()
-        u = SESSION.query(User).first()
-        ui = ExampleDataUI(u)
-    ui.setupUi(widget)
+        s = SESSION_FACTORY()
+        s.execute("INSERT INTO users (email, number, birthdate) VALUES (" +
+                  "\"persistent-wrongusers.org\", 4, \"2099-12-12\")")
+        s.commit()
+        u = s.query(User).first()
+        ui = PQSEditUI(u, s)
+    ui.setup_and_bind(widget, Ui_UserForm)
     widget.show()
     # run and show
     sys.exit(app.exec_())

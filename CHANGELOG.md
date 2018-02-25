@@ -32,9 +32,32 @@ Until a release is made, the progress on each commit will be detailed here
  - After refresh, fields are not validated to avoid changing the status
    message to "Pending changes" when object has just been refreshed.
 
-**[06](../../commit/master): Created PQSFieldBinder**
+**[06](../../commit/7605264ede316c8d6589ce34b124152304eed657): Created `PQSFieldBinder`**
  - Renamed `QtDataMapper` to `PQSFieldBinder`
  - Cleaned its code, added comments
  - Abstracted functionality
  - Added autoupdate `autoconnect` feature to connect signal and slot
    automatically
+
+**[07](../../commit/master): Created `PQSEditUI`**
+ - Allows to design a UI in QtDesigner to set as edit UI
+ - Allows to design a separate UI in QtDesigner for the model fields:
+    - Implements pre-defined `PQSFieldBinder` for following QWidgets:
+      `QLineEdit`, `QDateEdit`
+    - Searches binders in form, creates default binders by name if not found:
+      `birthdateDateEdit` -> `QDateEditPQSFieldBinder`
+ - Added disabled feature for fields that must not be edited (`id`)
+ - Changed behaviour of `PQSEditUI.commit`: reloads from model after save
+   (because some fields may be autocalculated like `id`)
+ - Added autosave feature in PQSFieldBinder
+ - Added and tested `QDateEdit` default `PQSFieldBinder`
+ - Added automatic session management from `sessionmaker` factory
+ - Renamed `PQSFieldBinder.mark_as_notvalidated` to 
+   `PQSFieldBinder.mark_as_not_validated`
+ - Changed behaviour of `PQSFieldBinder.update_to_gui`: doesn't call 
+   `PQSFieldBinder.mark_as_not_validated`
+ - Updated behaviour of `PQSEditUI.update_to_gui`: calls 
+   `PQSFieldBinder.mark_as_not_validated` by default but allows to avoid call 
+   if field is already validated
+ - Improved `PQSFieldBinder.bind_form` by using `PQSEditUI.update_to_gui`
+ - Added disabled message if field is generated automatically
