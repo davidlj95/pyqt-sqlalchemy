@@ -1,11 +1,36 @@
 cmd: "python"
-name: "PyQt - SQLAlchemy bindings: test"
+name: "PQS: test add"
 args:
-  - "bindings.py"
+  - "-m"
+  - "test"
+  - "add"
 sh: true,
 targets:
-  check_env:
-      name: "Conda: check environment"
+  "PQS: test edit-transient":
+      cmd: "python"
+      args:
+        - "-m"
+        - "test"
+        - "edit-transient"
+  "PQS: test edit-pending":
+      cmd: "python"
+      args:
+        - "-m"
+        - "test"
+        - "edit-pending"
+  "PQS: test edit-persistent":
+      cmd: "python"
+      args:
+        - "-m"
+        - "test"
+        - "edit-persistent"
+  "PQS: test edit-persistent-wrong":
+      cmd: "python"
+      args:
+        - "-m"
+        - "test"
+        - "edit-persistent-wrong"
+  "Conda: check environment":
       cmd: "conda"
       args:
         - "info"

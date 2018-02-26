@@ -62,7 +62,7 @@ Until a release is made, the progress on each commit will be detailed here
  - Improved `PQSFieldBinder.bind_form` by using `PQSEditUI.update_to_gui`
  - Added disabled message if field is generated automatically
 
-**[08](../../commits/master): Abstracted `PQSEditUi`**
+**[08](../../commits/5630ed78346d42b66e74ee47ccb9ee0880d63ef5): Abstracted `PQSEditUi`**
  - Removed `QMessageBox`, replaced by custom exceptions
  - Added exceptions for different kinds of possible user messages
  - Added and tested delete feature and button
@@ -77,3 +77,9 @@ Until a release is made, the progress on each commit will be detailed here
  - Split `bind_form` to create `attach_events` method
  - Fixed `update_to_gui` failing to validate
  - Adapted `__main__` code to suit the new style
+
+**[09](../../commits/master): Split into package `pqs`**
+ - Split `bindings.py` into `pqs` package
+ - Commented each `pqs` package's module
+ - Created `test` package, updated code to get it from `pqs` package
+ - Adapted `.atom-build.yaml` settings to match new code distribution
