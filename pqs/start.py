@@ -12,13 +12,29 @@ SessionFactory = sessionmaker()
 """
     sqlalchemy.orm.session.sessionmaker: Session factory
 """
+engine = None
+"""
+    sqlalchemy.engine.Engine: engine binded to the session factory
+"""
 
 
 # Methods
-def bind_engine(engine):
+def bind_engine(new_engine):
     """Binds an engine to the SessionFactory
 
     Args:
-        engine (sqlalchemy.engine.Engine): engine to bind to the session
+        new_engine (sqlalchemy.engine.Engine): engine to bind to the session
     """
-    SessionFactory.configure(bind=engine)
+    global engine
+    SessionFactory.configure(bind=new_engine)
+    engine = new_engine
+
+
+def is_engine_binded():
+    """Checks if the engine has been binded"""
+    return engine is not None
+
+
+def get_engine():
+    """Returns the binded engine"""
+    return engine

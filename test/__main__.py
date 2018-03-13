@@ -6,15 +6,19 @@ import datetime
 # # Internal
 from .design.user_form import Ui_UserForm
 from .design.edit_form import Ui_EditUI
-from pqs import PQSEditUI, bind_engine, Base, SessionFactory
+from .design.connect_form import Ui_ConnectForm
+from pqs import PQSEditUI, bind_engine, Base, SessionFactory, \
+                PQSConnectDefaultUI, is_engine_binded, get_engine
 # # External
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QMessageBox
 from sqlalchemy import Column, String, Integer, create_engine, Date
 from sqlalchemy.orm import validates
 
 # Constants
-MODES = ["add", "edit-transient", "edit-pending", "edit-persistent",
-         "edit-persistent-wrong"]
+TEST_CASES = ["add", "edit-transient", "edit-pending", "edit-persistent",
+              "edit-persistent-wrong", "connect"]
+AFTER_CONNECT_TEST = None
+MEM = []
 
 
 # Test model
@@ -22,7 +26,7 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, nullable=False)
-    email = Column(String, nullable=False)
+    email = Column(String(50), nullable=False)
     number = Column(Integer)
     birthdate = Column(Date)
 
@@ -57,51 +61,144 @@ class User(Base):
         return birthdate
 
 
+# Connect UI
+class ConnectUI(PQSConnectDefaultUI, Ui_ConnectForm):
+    @property
+    def connector_input(self):
+        return self.connectorComboBox
+
+    @property
+    def connector_input_value(self):
+        return self.connector_input.currentText()
+
+    @property
+    def port_input(self):
+        return self.portSpinBox
+
+    @property
+    def port_input_value(self):
+        return str(self.port_input.value())
+
+    def on_create(self, uri):
+        print("Tried to create engine from URI: %s" % uri)
+
+    def on_create_success(self, uri, eng):
+        QMessageBox.information(None, "Connected succesfully",
+                                "URI is %s\nEngine is %s" % (uri, eng))
+        print("Created succesfully an engine")
+        if callable(AFTER_CONNECT_TEST):
+            AFTER_CONNECT_TEST()
+
+    def on_create_failed(self, uri, exc):
+        import traceback
+        msg = QMessageBox()
+        msg.setText("Unable to connect")
+        msg.setInformativeText("URI is: %s\nError is: %s" % (uri, str(exc)))
+        msg.setDetailedText(traceback.format_exc())
+        msg.exec()
+        print("Failed to create an engine")
+        traceback.print_exc()
+
+
+def test_connect(widget):
+    """Tests the connect mode"""
+    ui = ConnectUI(opts={"echo": True})
+    ui.setupUi(widget)
+    ui.connector_input.setCurrentIndex(3)
+    ui.host_input.setText("127.0.0.1")
+    ui.port_input.setValue(3307)
+    ui.username_input.setText("ibcrg")
+    ui.password_input.setText("ibcrg")
+    ui.database_input.setText("ibcrg")
+    # continue with the engine added
+    if len(sys.argv) > 2:
+        if sys.argv[2] in TEST_CASES and sys.argv[2] != "connect":
+            print("Next test cases will continue with the specified engine")
+            test_case = sys.argv[2]
+            global AFTER_CONNECT_TEST
+
+            def AFTER_CONNECT_TEST():
+                global MEM
+                widget = QWidget()
+                res = test_edit(test_case, widget)
+                widget.show()
+                MEM += [widget, res]
+        else:
+            print("Invalid next test case")
+            print("Choose next test case from %s" % str(TEST_CASES))
+            print("(Except \"connect\")")
+    else:
+        print("No more test cases will be performed")
+    return ui
+
+
+def test_edit(test_case, widget):
+    """Tests the EditUI with the passed test case
+
+    Valid test_case is supposed or doesn't perform any test
+    """
+    # Check if engine is present
+    if not is_engine_binded():
+        print("Binding new engine")
+        bind_engine(create_engine("sqlite:///:memory:", echo=True))
+    # Create schem
+    Base.metadata.create_all(get_engine())
+    # Create editing UI
+    edit_ui = type("CustomEditUI", (Ui_EditUI, PQSEditUI), {})
+    ui, s, u = None, None, None
+    # Switch test
+    print(test_case)
+    if test_case == "add":
+        ui = edit_ui(User)
+    elif test_case == "edit-transient":
+        ui = edit_ui(User(email="transient@users.org", number=1))
+    else:
+        s = SessionFactory()
+        if test_case == "edit-pending":
+            u = User(email="pending@users.org", number=2)
+            s.add(u)
+            ui = edit_ui(u, s)
+        elif test_case == "edit-persistent":
+            u = User(email="persistent@users.org", number=3,
+                     birthdate=datetime.date(1995, 9, 21))
+            s.add(u)
+            s.commit()
+            ui = edit_ui(u, s)
+        elif test_case == "edit-persistent-wrong":
+            s.execute("INSERT INTO users (email, number, birthdate) VALUES (" +
+                      "\"persistent-wrongusers.org\", 4, \"2099-12-12\")")
+            s.commit()
+            u = s.query(User).filter(
+                User.email == "persistent-wrongusers.org").first()
+            ui = edit_ui(u, s)
+    # Create UI
+    ui.setup_and_bind(widget, Ui_UserForm)
+    return ui, s, u
+
+
 # run
 if __name__ == "__main__":
     # prepare scenario
-    mode = MODES[0]
+    test_case = TEST_CASES[0]
     # # args
     if len(sys.argv) > 1:
-        if sys.argv[1] in MODES:
-            mode = sys.argv[1]
+        if sys.argv[1] in TEST_CASES:
+            test_case = sys.argv[1]
         else:
-            print("unknown mode")
-            print("choose from %s" % str(MODES))
+            print("Unknown test")
+            print("Please choose one from %s" % str(TEST_CASES))
             sys.exit(1)
-    # # SQLAlchemy
-    engine = create_engine("sqlite:///:memory:", echo=True)
-    bind_engine(engine)
-    Base.metadata.create_all(engine)
-    # # Qt
+    else:
+        print("Using default test case: %s", test_case)
+    # init application
     app = QApplication(sys.argv)
     widget = QWidget()
-    print("ui mode: %s" % mode)
-    edit_ui = type("CustomEditUI", (Ui_EditUI, PQSEditUI), {})
-    if mode == "add":
-        ui = edit_ui(User)
-    elif mode == "edit-transient":
-        ui = edit_ui(User(email="transient@users.org", number=1))
-    elif mode == "edit-pending":
-        u = User(email="pending@users.org", number=2)
-        s = SessionFactory()
-        s.add(u)
-        ui = edit_ui(u, s)
-    elif mode == "edit-persistent":
-        u = User(email="persistent@users.org", number=3,
-                 birthdate=datetime.date(1995, 9, 21))
-        s = SessionFactory()
-        s.add(u)
-        s.commit()
-        ui = edit_ui(u, s)
-    elif mode == "edit-persistent-wrong":
-        s = SessionFactory()
-        s.execute("INSERT INTO users (email, number, birthdate) VALUES (" +
-                  "\"persistent-wrongusers.org\", 4, \"2099-12-12\")")
-        s.commit()
-        u = s.query(User).first()
-        ui = edit_ui(u, s)
-    ui.setup_and_bind(widget, Ui_UserForm)
+    # test
+    print("Selected test: %s" % test_case)
+    if test_case == "connect":
+        ui = test_connect(widget)
+    else:
+        ui = test_edit(test_case, widget)
+    # Run and show
     widget.show()
-    # run and show
     sys.exit(app.exec_())

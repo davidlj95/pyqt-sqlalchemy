@@ -32,14 +32,17 @@ Until a release is made, the progress on each commit will be detailed here
  - After refresh, fields are not validated to avoid changing the status
    message to "Pending changes" when object has just been refreshed.
 
-**[06](../../commit/7605264ede316c8d6589ce34b124152304eed657): Created `PQSFieldBinder`**
+**[06](../../commit/1eace609512ae38d8643b4b90f73cb4dc35723f3): Added this file, `CHANGELOG.md`**
+ - Based on template available in [Keep a Changelog website](http://keepachangelog.com/en/1.0.0/)
+
+**[07](../../commit/7605264ede316c8d6589ce34b124152304eed657): Created `PQSFieldBinder`**
  - Renamed `QtDataMapper` to `PQSFieldBinder`
  - Cleaned its code, added comments
  - Abstracted functionality
  - Added autoupdate `autoconnect` feature to connect signal and slot
    automatically
 
-**[07](../../commit/f65bde050f032d68092da4b3b4f4c179e859f110): Created `PQSEditUI`**
+**[08](../../commit/f65bde050f032d68092da4b3b4f4c179e859f110): Created `PQSEditUI`**
  - Allows to design a UI in QtDesigner to set as edit UI
  - Allows to design a separate UI in QtDesigner for the model fields:
     - Implements pre-defined `PQSFieldBinder` for following QWidgets:
@@ -62,7 +65,7 @@ Until a release is made, the progress on each commit will be detailed here
  - Improved `PQSFieldBinder.bind_form` by using `PQSEditUI.update_to_gui`
  - Added disabled message if field is generated automatically
 
-**[08](../../commits/5630ed78346d42b66e74ee47ccb9ee0880d63ef5): Abstracted `PQSEditUi`**
+**[09](../../commits/5630ed78346d42b66e74ee47ccb9ee0880d63ef5): Abstracted `PQSEditUi`**
  - Removed `QMessageBox`, replaced by custom exceptions
  - Added exceptions for different kinds of possible user messages
  - Added and tested delete feature and button
@@ -78,8 +81,16 @@ Until a release is made, the progress on each commit will be detailed here
  - Fixed `update_to_gui` failing to validate
  - Adapted `__main__` code to suit the new style
 
-**[09](../../commits/master): Split into package `pqs`**
+**[10](../../commits/2026e7d93a787f17eb663baade7e04b77e0068c5): Split into package `pqs`**
  - Split `bindings.py` into `pqs` package
  - Commented each `pqs` package's module
  - Created `test` package, updated code to get it from `pqs` package
  - Adapted `.atom-build.yaml` settings to match new code distribution
+
+**[11](../../commits/master): Created `PQSConnectUI`:**
+ - Allows to bind the engine to the session maker using a GUI
+ - Abstracted GUI design from operation
+ - Improved tests to allow test this new feature
+ - Improved tests to custom connect and test using this connection
+ - Improved `pqs.start` by adding methods to retrieve the engine
+ - Fixed `CHANGELOG.md` to add the commit where it appeared
