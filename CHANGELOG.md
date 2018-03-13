@@ -95,7 +95,7 @@ Until a release is made, the progress on each commit will be detailed here
  - Improved `pqs.start` by adding methods to retrieve the engine
  - Fixed `CHANGELOG.md` to add the commit where it appeared
 
-**[12](../../commits/master): Abstracted `PQSQueryUI`:**
+**[12](../../commits/e951bc35d5951c9d41926d88f60c6711ec02d8c1): Abstracted `PQSQueryUI`:**
  - Created and tested hard coded version
  - Separed UI design from logic
  - Cleaned and commented code
@@ -103,3 +103,7 @@ Until a release is made, the progress on each commit will be detailed here
  - Added `helpers` module
  - Moved `editors` helpers to `helpers` module
  - Added automatically session retrieval
+
+**[13](../../commits/master): Fixed `get_session` bug
+ - Argument `self` not necessary, making all sessions to be new
+ - Removed unused libraries in `editor` module

@@ -46,7 +46,6 @@ The usage is the following:
 import inspect
 from abc import ABCMeta, abstractmethod
 # # Internal
-from .start import SessionFactory, Base
 from .helpers import get_model_object, get_session
 from .errors import PQSUINotValidError, PQSBindersNotFoundError, \
                     PQSBindersNotValidError, PQSFormFieldsNotValidError

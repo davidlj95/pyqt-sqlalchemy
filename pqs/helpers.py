@@ -79,7 +79,7 @@ def get_model_object(model_cls_obj):
     return model
 
 
-def get_session(self, session=None):
+def get_session(session=None):
     """Gets a session to use with one or more models
 
     Must be either a sqlalchemy.orm.session.Session object or None so we
@@ -99,10 +99,7 @@ def get_session(self, session=None):
     if session is None:
         session = SessionFactory()
     # Session passed is okay
-    elif isinstance(session, Session):
-        # The passed value is a valid object
-        session = session
-    else:
+    elif not isinstance(session, Session):
         # No valid session passed
         raise PQSSessionNotValidError(
             "Session must be an instance of SQLAlchemy's " +
