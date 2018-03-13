@@ -5,19 +5,22 @@ import sys
 import datetime
 # # Internal
 from .design.user_form import Ui_UserForm
-from .design.edit_form import Ui_EditUI
+from .design.edit_form import Ui_EditForm
 from .design.connect_form import Ui_ConnectForm
+from .design.query_form import Ui_QueryForm
 from pqs import PQSEditUI, bind_engine, Base, SessionFactory, \
-                PQSConnectDefaultUI, is_engine_binded, get_engine
+                PQSConnectDefaultUI, is_engine_binded, get_engine, PQSQueryUI
 # # External
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget, QMessageBox
 from sqlalchemy import Column, String, Integer, create_engine, Date
 from sqlalchemy.orm import validates
 
 # Constants
 TEST_CASES = ["add", "edit-transient", "edit-pending", "edit-persistent",
-              "edit-persistent-wrong", "connect"]
+              "edit-persistent-wrong", "connect", "query"]
 AFTER_CONNECT_TEST = None
+AFTER_EDIT_TEST = None
 MEM = []
 
 
@@ -100,6 +103,14 @@ class ConnectUI(PQSConnectDefaultUI, Ui_ConnectForm):
         traceback.print_exc()
 
 
+def ensure_engine_exists():
+    """Ensures an engine exists or creates a temp one"""
+    # Check if engine is present
+    if not is_engine_binded():
+        print("Binding new engine")
+        bind_engine(create_engine("sqlite:///:memory:", echo=True))
+
+
 def test_connect(widget):
     """Tests the connect mode"""
     ui = ConnectUI(opts={"echo": True})
@@ -110,6 +121,7 @@ def test_connect(widget):
     ui.username_input.setText("ibcrg")
     ui.password_input.setText("ibcrg")
     ui.database_input.setText("ibcrg")
+    ui.connect_button.setFocus(Qt.OtherFocusReason)
     # continue with the engine added
     if len(sys.argv) > 2:
         if sys.argv[2] in TEST_CASES and sys.argv[2] != "connect":
@@ -120,7 +132,8 @@ def test_connect(widget):
             def AFTER_CONNECT_TEST():
                 global MEM
                 widget = QWidget()
-                res = test_edit(test_case, widget)
+                res = test_edit(test_case, widget) if test_case != "query" \
+                    else test_query(widget)
                 widget.show()
                 MEM += [widget, res]
         else:
@@ -137,14 +150,11 @@ def test_edit(test_case, widget):
 
     Valid test_case is supposed or doesn't perform any test
     """
-    # Check if engine is present
-    if not is_engine_binded():
-        print("Binding new engine")
-        bind_engine(create_engine("sqlite:///:memory:", echo=True))
+    ensure_engine_exists()
     # Create schem
     Base.metadata.create_all(get_engine())
     # Create editing UI
-    edit_ui = type("CustomEditUI", (Ui_EditUI, PQSEditUI), {})
+    edit_ui = type("CustomEditUI", (Ui_EditForm, PQSEditUI), {})
     ui, s, u = None, None, None
     # Switch test
     print(test_case)
@@ -176,6 +186,18 @@ def test_edit(test_case, widget):
     return ui, s, u
 
 
+def test_query(widget):
+    """Tests the querying UI"""
+    ensure_engine_exists()
+    # Create schem
+    Base.metadata.create_all(get_engine())
+    # Query Ui
+    query_ui = type("CustomQueryUI", (PQSQueryUI, Ui_QueryForm), {})
+    ui = query_ui(User)
+    ui.setupUi(widget)
+    return ui
+
+
 # run
 if __name__ == "__main__":
     # prepare scenario
@@ -189,7 +211,7 @@ if __name__ == "__main__":
             print("Please choose one from %s" % str(TEST_CASES))
             sys.exit(1)
     else:
-        print("Using default test case: %s", test_case)
+        print("Using default test case: %s" % test_case)
     # init application
     app = QApplication(sys.argv)
     widget = QWidget()
@@ -197,8 +219,12 @@ if __name__ == "__main__":
     print("Selected test: %s" % test_case)
     if test_case == "connect":
         ui = test_connect(widget)
+    elif test_case == "query":
+        ui = test_query(widget)
     else:
         ui = test_edit(test_case, widget)
     # Run and show
     widget.show()
+    if test_case == "connect":
+        ui.connect_button.setFocus(Qt.OtherFocusReason)
     sys.exit(app.exec_())

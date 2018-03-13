@@ -47,14 +47,13 @@ import inspect
 from abc import ABCMeta, abstractmethod
 # # Internal
 from .start import SessionFactory, Base
-from .errors import PQSUINotValidError, PQSModelNotValidError, \
-                    PQSBindersNotFoundError, PQSBindersNotValidError, \
-                    PQSFormFieldsNotValidError, PQSSessionNotValidError
+from .helpers import get_model_object, get_session
+from .errors import PQSUINotValidError, PQSBindersNotFoundError, \
+                    PQSBindersNotValidError, PQSFormFieldsNotValidError
 from .binder import PQSFieldBinder
 from .binders_sample import QLineEditBinder, QDateEditBinder
 # # External
 from sqlalchemy import inspect as sqla_inspect
-from sqlalchemy.orm import Session
 
 
 # Classes
@@ -74,18 +73,6 @@ class PQSEditUI(metaclass=ABCMeta):
     """
     __slots__ = "_model", "_parent", "_form_ui", "_binders", "_session"
 
-    BASE = Base
-    """
-        object: SQLAlchemy declarative base class in order to check
-                subinstances are correct
-    """
-
-    SESSION_FACTORY = SessionFactory
-    """
-        sqlalchemy.orm.session.sessionmaker: Session factory to create sessions
-        if no session is specified
-    """
-
     GUI_BINDERS = {
         "QLineEdit": QLineEditBinder,
         "QDateEdit": QDateEditBinder
@@ -103,73 +90,11 @@ class PQSEditUI(metaclass=ABCMeta):
         Sets the SQLAlchemy model and session. See methods `_set_model` and
         `_set_session` for more information
         """
-        self._set_model(cls_obj)
-        self._set_session(session)
+        self._model = get_model_object(cls_obj)
+        self._session = get_session(session)
         self._parent = None
         self._form_ui = None
         self._binders = None
-
-    # Private setters
-    def _set_model(self, model_cls_obj):
-        """Sets the SQLAlchemy model to bind to the GUI
-
-        Detects if the passed argument is a class or an object in order to
-        create a new model from the class or use the existing model passed
-
-        If no valid model is passed, raises ValueError
-
-        Raises:
-            ValueError: if passed argument is not either a valid SQLAlchemy
-                        model object (subinstance of self.BASE) or class
-                        (subclass of self.BASE)
-
-        Args:
-            model_cls_obj (mixed): the SQLAlchemy model class / object to bind
-                if it's an object, will bind this model and display its values
-                if it's a class, will create a new empty object from it
-        """
-        # Create or save model
-        if inspect.isclass(model_cls_obj):
-            # Detect if class is correct
-            if issubclass(model_cls_obj, self.BASE):
-                self._model = model_cls_obj()
-            else:
-                raise PQSModelNotValidError("Model must be a class based on " +
-                                            "SQLAlchemy's base class")
-        elif isinstance(model_cls_obj, Base):
-            # The passed value is an object
-            self._model = model_cls_obj
-        else:
-            # No valid model passed
-            raise PQSModelNotValidError(
-                "Model must be a subclass of SQLAlchemy's base class or an " +
-                "instance of a subclass of it")
-
-    def _set_session(self, session):
-        """Sets the SQLAlchemy session to use in the binder
-
-        Must be either a sqlalchemy.orm.session.Session object or None so we
-        can create a new session using the session maker stored
-
-        Raises:
-            ValueError: if session passed is not valid
-
-        Args:
-            session (sqlalchemy.orm.session.Session): session to track model
-                will create one if empty
-        """
-        # Create or save session
-        if session is None:
-            self._session = self.SESSION_FACTORY()
-        elif isinstance(session, Session):
-            # The passed value is an object
-            self._session = session
-        else:
-            # No valid model passed
-            raise PQSSessionNotValidError(
-                "Session must be an instance of SQLAlchemy's " +
-                "`sqlalchemy.orm.session.Session` or `None` to create one " +
-                "automatically")
 
     # Generic properties
     @property

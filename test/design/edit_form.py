@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'edit_form.ui'
+# Form implementation generated from reading ui file 'test/ui/edit_form.ui'
 #
 # Created by: PyQt5 UI code generator 5.9
 #
@@ -8,13 +8,13 @@
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-class Ui_EditUI(object):
-    def setupUi(self, EditUI):
-        EditUI.setObjectName("EditUI")
-        EditUI.resize(400, 127)
-        self.verticalLayout = QtWidgets.QVBoxLayout(EditUI)
+class Ui_EditForm(object):
+    def setupUi(self, EditForm):
+        EditForm.setObjectName("EditForm")
+        EditForm.resize(400, 127)
+        self.verticalLayout = QtWidgets.QVBoxLayout(EditForm)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.titleLabel = QtWidgets.QLabel(EditUI)
+        self.titleLabel = QtWidgets.QLabel(EditForm)
         font = QtGui.QFont()
         font.setPointSize(13)
         font.setBold(True)
@@ -23,35 +23,35 @@ class Ui_EditUI(object):
         self.titleLabel.setAlignment(QtCore.Qt.AlignCenter)
         self.titleLabel.setObjectName("titleLabel")
         self.verticalLayout.addWidget(self.titleLabel)
-        self.line = QtWidgets.QFrame(EditUI)
+        self.line = QtWidgets.QFrame(EditForm)
         self.line.setFrameShape(QtWidgets.QFrame.HLine)
         self.line.setFrameShadow(QtWidgets.QFrame.Sunken)
         self.line.setObjectName("line")
         self.verticalLayout.addWidget(self.line)
-        self.formWidget = QtWidgets.QWidget(EditUI)
+        self.formWidget = QtWidgets.QWidget(EditForm)
         self.formWidget.setObjectName("formWidget")
         self.verticalLayout.addWidget(self.formWidget)
-        self.line_2 = QtWidgets.QFrame(EditUI)
+        self.line_2 = QtWidgets.QFrame(EditForm)
         self.line_2.setFrameShape(QtWidgets.QFrame.HLine)
         self.line_2.setFrameShadow(QtWidgets.QFrame.Sunken)
         self.line_2.setObjectName("line_2")
         self.verticalLayout.addWidget(self.line_2)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
-        self.saveButton = QtWidgets.QPushButton(EditUI)
+        self.saveButton = QtWidgets.QPushButton(EditForm)
         self.saveButton.setObjectName("saveButton")
         self.horizontalLayout.addWidget(self.saveButton)
-        self.validateButton = QtWidgets.QPushButton(EditUI)
+        self.validateButton = QtWidgets.QPushButton(EditForm)
         self.validateButton.setObjectName("validateButton")
         self.horizontalLayout.addWidget(self.validateButton)
-        self.refreshButton = QtWidgets.QPushButton(EditUI)
+        self.refreshButton = QtWidgets.QPushButton(EditForm)
         self.refreshButton.setObjectName("refreshButton")
         self.horizontalLayout.addWidget(self.refreshButton)
-        self.deleteButton = QtWidgets.QPushButton(EditUI)
+        self.deleteButton = QtWidgets.QPushButton(EditForm)
         self.deleteButton.setObjectName("deleteButton")
         self.horizontalLayout.addWidget(self.deleteButton)
         self.verticalLayout.addLayout(self.horizontalLayout)
-        self.statusLabel = QtWidgets.QLabel(EditUI)
+        self.statusLabel = QtWidgets.QLabel(EditForm)
         font = QtGui.QFont()
         font.setPointSize(9)
         font.setItalic(True)
@@ -60,26 +60,26 @@ class Ui_EditUI(object):
         self.statusLabel.setObjectName("statusLabel")
         self.verticalLayout.addWidget(self.statusLabel)
 
-        self.retranslateUi(EditUI)
-        QtCore.QMetaObject.connectSlotsByName(EditUI)
+        self.retranslateUi(EditForm)
+        QtCore.QMetaObject.connectSlotsByName(EditForm)
 
-    def retranslateUi(self, EditUI):
+    def retranslateUi(self, EditForm):
         _translate = QtCore.QCoreApplication.translate
-        EditUI.setWindowTitle(_translate("EditUI", "PyQt - SQLAlchemy binder"))
-        self.titleLabel.setText(_translate("EditUI", "Edit Title"))
-        self.saveButton.setText(_translate("EditUI", "Save"))
-        self.validateButton.setText(_translate("EditUI", "Validate"))
-        self.refreshButton.setText(_translate("EditUI", "Refresh"))
-        self.deleteButton.setText(_translate("EditUI", "Delete"))
-        self.statusLabel.setText(_translate("EditUI", "Status"))
+        EditForm.setWindowTitle(_translate("EditForm", "PyQt - SQLAlchemy binder"))
+        self.titleLabel.setText(_translate("EditForm", "Edit Title"))
+        self.saveButton.setText(_translate("EditForm", "Save"))
+        self.validateButton.setText(_translate("EditForm", "Validate"))
+        self.refreshButton.setText(_translate("EditForm", "Refresh"))
+        self.deleteButton.setText(_translate("EditForm", "Delete"))
+        self.statusLabel.setText(_translate("EditForm", "Status"))
 
 
 if __name__ == "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
-    EditUI = QtWidgets.QWidget()
-    ui = Ui_EditUI()
-    ui.setupUi(EditUI)
-    EditUI.show()
+    EditForm = QtWidgets.QWidget()
+    ui = Ui_EditForm()
+    ui.setupUi(EditForm)
+    EditForm.show()
     sys.exit(app.exec_())
 

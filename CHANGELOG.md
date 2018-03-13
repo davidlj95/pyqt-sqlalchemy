@@ -87,10 +87,19 @@ Until a release is made, the progress on each commit will be detailed here
  - Created `test` package, updated code to get it from `pqs` package
  - Adapted `.atom-build.yaml` settings to match new code distribution
 
-**[11](../../commits/master): Created `PQSConnectUI`:**
+**[11](../../commits/234d80bd3eaad4e71d18880951df46a44959a4cc): Created `PQSConnectUI`:**
  - Allows to bind the engine to the session maker using a GUI
  - Abstracted GUI design from operation
  - Improved tests to allow test this new feature
  - Improved tests to custom connect and test using this connection
  - Improved `pqs.start` by adding methods to retrieve the engine
  - Fixed `CHANGELOG.md` to add the commit where it appeared
+
+**[12](../../commits/master): Abstracted `PQSQueryUI`:**
+ - Created and tested hard coded version
+ - Separed UI design from logic
+ - Cleaned and commented code
+ - Added missing properties
+ - Added `helpers` module
+ - Moved `editors` helpers to `helpers` module
+ - Added automatically session retrieval
